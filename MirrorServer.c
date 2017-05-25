@@ -9,14 +9,13 @@
 #include <string.h>
 #include <ctype.h>
 #include <signal.h>
+#include <pthread.h>
+
+#include "Protocol.h"
+#include "functions.h"
 
 #define BUFSIZE 1024
 
-void perror_exit(char *message)
-{
-    perror(message);
-    exit(EXIT_FAILURE);
-}
 
 int main(int argc, char *argv[]) 
 {
@@ -30,7 +29,7 @@ int main(int argc, char *argv[])
     char host_name[BUFSIZE];
     char dirname[BUFSIZE]; 
     
-    port = 9000;
+    port = atoi(argv[1]);
     threadnum = 5;
     strcpy(host_name, "localhost");
     strcpy(dirname, "/home/mt/Desktop/DI");
@@ -58,17 +57,34 @@ int main(int argc, char *argv[])
     
     printf("Connecting to %s port %d\n", argv[1], port);
         	
+    sprintf(buf, "LIST 1 3");
 
-    fprintf(stderr, "MirrorServer: Sending dirname '%s' to ContentServer!\n", dirname);
+    fprintf(stderr, "MirrorServer: Sending '%s' to ContentServer!\n", buf);
     
-    if (write(sock, dirname, BUFSIZE) < 0)
+    if (write(sock, buf, BUFSIZE) < 0)
     	perror_exit("write");
         	
-    if (read(sock, buf, BUFSIZE) < 0)
-    	perror_exit("read");
+   	char c;
+   	int buf_index = 0;
+   	FILE* socket_fp;
+   	socket_fp = fdopen(sock ,"r+");
+	if (socket_fp == NULL)
+		perror_exit("fdopen");
 
-    fprintf(stderr, "MirrorServer: Received '%s' from ContentServer!\n", buf);
+   	while ( (c = getc(socket_fp)) != EOF )
+    {
+    	buf[buf_index++] = c;
+
+    	if (c == '\n')
+    	{
+    		buf[buf_index] = '\0';
+    		fprintf(stderr, "Received dirorfilename: '%s'\n", buf);
+    		buf_index = 0;
+    	}
+    }
+
     
+    fclose(socket_fp);
     close(sock);/* Close socket */
 
     return 0;
