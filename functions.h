@@ -7,7 +7,9 @@
 #include <string.h>
 
 #define BUFSIZE 1024
+#define perror2(s,e) fprintf(stderr, "%s: %s\n", s, strerror(e))
 
 void perror_exit(char *message);
+int matchesDirOrFile(char* requested, char* given, char* saveDir, char** localPath);
 
 #endif

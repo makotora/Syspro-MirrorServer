@@ -36,10 +36,10 @@ void delays_free(delays** delays_ptr_ptr)
 	free(*delays_ptr_ptr);
 }
 
-void delays_add(delays* delays_ptr, int id, int delay)
+void delays_add(delays* delays_ptr, char* id, int delay)
 {
 	id_delay* new_id_delay = malloc(sizeof(id_delay));
-	new_id_delay->id = id;
+	new_id_delay->id = strdup(id);
 	new_id_delay->delay = delay;
 	new_id_delay->next = NULL;
 
@@ -61,6 +61,22 @@ void delays_add(delays* delays_ptr, int id, int delay)
 	}
 }
 
+
+int delays_get_by_id(delays* delays_ptr, char* id)
+{
+	id_delay* current = delays_ptr->first;
+
+	while (current != NULL)
+	{
+		fprintf(stderr, "Current id: %s\n", current->id);
+		if (!strcmp(id, current->id))
+			return current->delay;
+
+		current = current->next;
+	}
+
+	return -1;
+}
 
 //THREAD INFOS
 thread_infos* thread_infos_create()
