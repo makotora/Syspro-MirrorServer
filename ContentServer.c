@@ -26,32 +26,34 @@ void* thread_content_server(void* socket)
     char buf[BUFSIZE];
     char command[18];
     char* token;
+    char* savePtr;
     char* id;
+    char* path;
     char c;
     int delay;
     FILE* popen_fp;
    	FILE* socket_fp;
-   	FILE* fetch_file;
 
     int* socketPtr = (int*) socket;
     int newsock = *socketPtr;
-    socket_fp = fdopen(newsock ,"r+");
-    if (socket_fp == NULL)
-    	perror_exit("fdopen");
 
     receiveMessage(newsock, buf);
     char* message = strdup(buf);
 
-    // fprintf(stderr, "ContentServer: Received '%s' from MirrorServer!\n", buf);
+    fprintf(stderr, "ContentServerThread: Received '%s' from MirrorServer!\n", buf);
     //get type of request
-    token = strtok(buf, " ");
+    token = strtok_r(buf, " ", &savePtr);
 
     if ( !strcmp(token, "LIST") )
     {
-    	token = strtok(NULL, " ");//get id
+    	token = strtok_r(NULL, " ", &savePtr);//get id
     	id = strdup(token);
-    	token = strtok(NULL, " ");//get delay
+    	token = strtok_r(NULL, " ", &savePtr);//get delay
     	delay = atoi(token);
+
+    	socket_fp = fdopen(newsock ,"r+");
+    		if (socket_fp == NULL)
+    			perror_exit("fdopen");
 
     	//add delay to delays list
     	pthread_mutex_lock(&delays_mtx);
@@ -88,15 +90,18 @@ void* thread_content_server(void* socket)
     	putc(EOF, socket_fp);
 
     	pclose(popen_fp);
+    	fclose(socket_fp);
     	free(id);
     }
     else if ( !strcmp(token, "FETCH") )
     {
     	fprintf(stderr, "ContentServer thread: Received a FETCH request! : '%s'\n", message);
-    	token = strtok(NULL, " ");//next token is the ID of the request
+    	token = strtok_r(NULL, " ", &savePtr);//next token is the ID of the request
+    	fprintf(stderr, "\ttoken1 %s\n", token);
+    	id = strdup(token);
 
     	pthread_mutex_lock(&delays_mtx);
-    	delay = delays_get_by_id(delays_list, token);
+    	delay = delays_get_by_id(delays_list, id);
     	pthread_mutex_unlock(&delays_mtx);
 
     	if (delay == -1)
@@ -107,28 +112,22 @@ void* thread_content_server(void* socket)
 
     	fprintf(stderr, "Delay for this fetch is : %d\n", delay);
     	//last token is the path to the file (full path) for fetching
-    	token = strtok(NULL, " ");
+    	token = strtok_r(NULL, " ", &savePtr);
+    	fprintf(stderr, "\ttoken2 %s\n", token);
+    	path = strdup(token);
 
-    	//open file and send all bytes of that file to the Mirror server
-    	fetch_file = fopen(token, "r");
+    	sendFile(newsock, path, BUFSIZE);
 
-    	while ( (c = getc(fetch_file)) != EOF )
-    	{
-    	    putc(c, socket_fp);
-    	}
-    	putc(EOF, socket_fp);//send EOF to terminate connection
-
-    	fclose(fetch_file);
+    	free(id);
+    	free(path);
     }
     else
     {
     	fprintf(stderr, "ContentServer thread: Received an unknown request! : '%s'", message);
-    	strcpy(buf, "ERROR");
     }
     
     printf("Closing connection.\n\n");
 
-    fclose(socket_fp);
     close(newsock);	  /* Close socket */
     free(socketPtr);
     free(message);

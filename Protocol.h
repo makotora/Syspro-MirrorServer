@@ -4,6 +4,8 @@
 #include <stdio.h>
 #include <sys/wait.h>
 #include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netdb.h>
@@ -17,5 +19,8 @@
 
 void receiveMessage(int socket, char* message);
 void sendMessage(int socket, char* message);
+
+void receiveFile(int socket, char* filePath);
+void sendFile(int socket, char* filePath, int bufferSize);
 
 #endif

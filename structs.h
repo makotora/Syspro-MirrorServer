@@ -47,26 +47,27 @@ void delays_free(delays** delays_ptr_ptr);
 void delays_add(delays* delays_ptr, char* id, int delay);
 int delays_get_by_id(delays* delays_ptr, char* id);
 
-//thr kept in a list so we can join later
-typedef struct thread_info thread_info;
-struct thread_info
+struct id_counter
 {
-	pthread_t thr;
-	thread_info* next;
+	char* id;
+	int counter;
+	int wont_increase;
 };
+typedef struct id_counter id_counter;
 
-
-struct thread_infos
+struct id_counters_array
 {
-	thread_info* first;
-	thread_info* last;
+	id_counter* array;
+	int size;
+	int index;
 };
-typedef struct thread_infos thread_infos;
+typedef struct id_counters_array id_counters_array;
 
-thread_infos* thread_infos_create();
-void thread_infos_free(thread_infos** infos_ptr_ptr);
-void thread_infos_add(thread_infos* infos_ptr, pthread_t thr);
-
-//
+id_counters_array* idc_array_create(int size);
+int idc_array_add(id_counters_array* idc_array, char* id);
+int idc_array_increase(id_counters_array* idc_array, char* id);
+int idc_array_decrease(id_counters_array* idc_array, char* id, int* wont_increase);
+id_counter* idc_array_get(id_counters_array* idc_array, char* id);
+void idc_array_free(id_counters_array** idc_array);
 
 #endif

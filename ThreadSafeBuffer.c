@@ -58,13 +58,12 @@ void TSBuffer_push(TSBuffer* buffer_ptr, char* host, int port, char* id, char* l
 	pthread_mutex_lock(&buffer_ptr->end_mtx);//make sure that no other thread will mess with the end var at the same time
 	buffer_ptr->end = (buffer_ptr->end + 1) % buffer_ptr->size;
 	end = buffer_ptr->end;
-	pthread_mutex_unlock(&buffer_ptr->end_mtx);
-	
 	buffer_ptr->data[end].host = host_copy;
 	buffer_ptr->data[end].port = port;
 	buffer_ptr->data[end].id = id_copy;
 	buffer_ptr->data[end].local_path = localp_copy;
 	buffer_ptr->data[end].remote_path = remotep_copy;
+	pthread_mutex_unlock(&buffer_ptr->end_mtx);
 }
 
 
@@ -91,9 +90,8 @@ Buffer_data TSBuffer_pop(TSBuffer* buffer_ptr)
 	pthread_mutex_lock(&buffer_ptr->start_mtx);//make sure that no other thread will mess with the start var at the same time
 	start = buffer_ptr->start;
 	buffer_ptr->start = (buffer_ptr->start + 1) % buffer_ptr->size;
-	pthread_mutex_unlock(&buffer_ptr->start_mtx);	
-	
 	buff_data = buffer_ptr->data[start];
+	pthread_mutex_unlock(&buffer_ptr->start_mtx);	
 
 	return buff_data;
 }

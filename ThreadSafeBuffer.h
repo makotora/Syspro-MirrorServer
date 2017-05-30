@@ -23,7 +23,6 @@ struct Buffer_data
 	char* id;
 	char* local_path;
 	char* remote_path;
-	int isLast;
 };
 typedef struct Buffer_data Buffer_data;
 
