@@ -4,7 +4,7 @@
 void receiveMessage(int socket, char* message)
 {
 	if ( read(socket, message, BUFSIZE) < 0 )
-    	perror_exit("receiveMessage-read");
+		perror_exit("receiveMessage-read");
 }
 
 
@@ -50,8 +50,8 @@ void receiveFile(int socket, char* filePath)
 	for (i=0; i<fileParts; i++)
 	{
 		//read MaxBuffer bytes
-		if ( read(socket, buffer, MaxBuffer) < 0 )
-    		perror_exit("receiveFile-read");
+	    if ( read(socket, buffer, MaxBuffer) < 0 )
+			perror_exit("receiveFile-read");
 
     	//write them to the file
     	if ( write(filefd, buffer, MaxBuffer) < 0 )
@@ -65,8 +65,8 @@ void receiveFile(int socket, char* filePath)
 	if (lastPartBytes != 0)
 	{
 		//read lastPartBytes bytes
-		if ( read(socket, buffer, lastPartBytes) < 0 )
-    		perror_exit("receiveFile-read");
+	    if ( read(socket, buffer, lastPartBytes) < 0 )
+			perror_exit("receiveFile-read");
 
     	//write them to the file
     	if ( write(filefd, buffer, lastPartBytes) < 0 )
@@ -126,9 +126,9 @@ void sendFile(int socket, char* filePath, int bufferSize)
 		if ( read(filefd, buffer, bufferSize) < 0 )
     		perror_exit("sendFile-read");
 
-    	//send them to file
+    	//send them to client
     	if ( write(socket, buffer, bufferSize) < 0 )
-    		perror_exit("sendFile-write");
+			perror_exit("sendFile-write");
 
     	//receive OK message to move on
     	receiveMessage(socket, message);
@@ -137,6 +137,7 @@ void sendFile(int socket, char* filePath, int bufferSize)
     		fprintf(stderr, "sendFile Error! Did not receive OK message for part %d!\n", i + 1);
     		fprintf(stderr, "Received: '%s'\n", message);
     	}
+    	
 	}
 
 	//if there are remaining bytes to send
@@ -148,7 +149,7 @@ void sendFile(int socket, char* filePath, int bufferSize)
 
     	//send them to client
     	if ( write(socket, buffer, lastPartBytes) < 0 )
-    		perror_exit("sendFile-write");
+			perror_exit("sendFile-write");
 
     	//receive OK message to move on
     	receiveMessage(socket, message);

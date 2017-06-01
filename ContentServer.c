@@ -15,7 +15,7 @@
 #include "functions.h"
 #include "structs.h"
 
-#define LISTEN_QUEUE_SIZE 10
+#define LISTEN_QUEUE_SIZE 20
 #define BUFSIZE 1024
 
 delays* delays_list;
@@ -37,13 +37,15 @@ void* thread_content_server(void* socket)
     int* socketPtr = (int*) socket;
     int newsock = *socketPtr;
 
+    //Receive request message
     receiveMessage(newsock, buf);
-    char* message = strdup(buf);
-
-    fprintf(stderr, "ContentServerThread: Received '%s' from MirrorServer!\n", buf);
+    fprintf(stderr, "\nContentServerThread: Received '%s' from MirrorServer!\n", buf);
+    
     //get type of request
     token = strtok_r(buf, " ", &savePtr);
 
+    
+    //If it is a LIST request
     if ( !strcmp(token, "LIST") )
     {
     	token = strtok_r(NULL, " ", &savePtr);//get id
@@ -57,8 +59,9 @@ void* thread_content_server(void* socket)
 
     	//add delay to delays list
     	pthread_mutex_lock(&delays_mtx);
-    	delays_add(delays_list, id, delay);
+        	delays_add(delays_list, id, delay);
     	pthread_mutex_unlock(&delays_mtx);
+
 
     	//First find the directories and send their names
     	sprintf(command, "find $PWD -type d");
@@ -93,9 +96,10 @@ void* thread_content_server(void* socket)
     	fclose(socket_fp);
     	free(id);
     }
+    //if its a FETCH request
     else if ( !strcmp(token, "FETCH") )
     {
-    	fprintf(stderr, "ContentServer thread: Received a FETCH request! : '%s'\n", message);
+    	fprintf(stderr, "ContentServer thread: Received a FETCH request!\n");
     	token = strtok_r(NULL, " ", &savePtr);//next token is the ID of the request
     	fprintf(stderr, "\ttoken1 %s\n", token);
     	id = strdup(token);
@@ -111,6 +115,7 @@ void* thread_content_server(void* socket)
     	}
 
     	fprintf(stderr, "Delay for this fetch is : %d\n", delay);
+        // sleep(delay);
     	//last token is the path to the file (full path) for fetching
     	token = strtok_r(NULL, " ", &savePtr);
     	fprintf(stderr, "\ttoken2 %s\n", token);
@@ -123,14 +128,14 @@ void* thread_content_server(void* socket)
     }
     else
     {
-    	fprintf(stderr, "ContentServer thread: Received an unknown request! : '%s'", message);
+    	fprintf(stderr, "ContentServer thread: Received an unknown request! : '%s'", token);
     }
     
     printf("Closing connection.\n\n");
 
     close(newsock);	  /* Close socket */
+    newsock = -1;
     free(socketPtr);
-    free(message);
 
     //detach!
     pthread_detach(pthread_self());
@@ -157,7 +162,7 @@ int main(int argc, char *argv[])
     chdir(dirorfilename);
 
     /* Create socket */
-    if ( (sock = socket(PF_INET, SOCK_STREAM, 0)) < 0 )
+    if ( (sock = socket(AF_INET, SOCK_STREAM, 0)) < 0 )
         perror_exit("socket");
 
     server.sin_family = AF_INET;       /* Internet domain */

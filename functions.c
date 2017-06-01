@@ -12,7 +12,6 @@ int matchesDirOrFile(char* requested, char* given, char* saveDir, char** localPa
 	int requestedSize = strlen(requested);
 	if (requested[requestedSize-1] == '/')//if user gave '/' at the end,'remove' it to avoid confusion
 	{
-		printf("\t\tHERE!\n");
 		requested[requestedSize-1] = '\0';
 		requestedSize--;
 	}

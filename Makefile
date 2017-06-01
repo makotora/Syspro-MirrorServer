@@ -1,8 +1,8 @@
 OBJS1 = ContentServer.o MirrorServer.o
 OBJS2 = functions.o structs.o Protocol.o
-TSB = ThreadSafeBuffer.o
-SOURCE = ContentServer.c MirrorServer.c functions.c Protocol.c structs.c ThreadSafeBuffer.c
-HEADER = functions.h Protocol.h structs.h ThreadSafeBuffer.h
+B = Buffer.o
+SOURCE = ContentServer.c MirrorServer.c functions.c Protocol.c structs.c Buffer.c
+HEADER = functions.h Protocol.h structs.h Buffer.h
 CC = gcc
 CFLAGS = -c -Wall
 LFLAGS = -Wall
@@ -12,8 +12,8 @@ OUT = MirrorServer, ContentServer
 all: MirrorServer ContentServer
 
 
-MirrorServer: MirrorServer.o $(OBJS2) $(TSB)
-	$(CC) $(LFLAGS) $(OBJS2) $(TSB) MirrorServer.o -o MirrorServer -lpthread
+MirrorServer: MirrorServer.o $(OBJS2) $(B)
+	$(CC) $(LFLAGS) $(OBJS2) $(B) MirrorServer.o -o MirrorServer -lpthread
 
 ContentServer: ContentServer.o $(OBJS2)
 	$(CC) $(LFLAGS) $(OBJS2) ContentServer.o -o ContentServer -lpthread
@@ -25,8 +25,8 @@ MirrorServer.o: MirrorServer.c
 ContentServer.o: ContentServer.c
 	$(CC) $(CFLAGS) $(SFLAGS) ContentServer.c
 
-ThreadSafeBuffer.o: ThreadSafeBuffer.c
-	$(CC) $(CFLAGS) $(SFLAGS) ThreadSafeBuffer.c
+Buffer.o: Buffer.c
+	$(CC) $(CFLAGS) $(SFLAGS) Buffer.c
 
 Protocol.o: Protocol.c
 	$(CC) $(CFLAGS) $(SFLAGS) Protocol.c
@@ -38,7 +38,7 @@ structs.o: structs.c
 	$(CC) $(CFLAGS) structs.c	
 
 clean:
-	rm -rf $(OBJS1) $(OBJS2) $(TSB) $(OUT)
+	rm -rf $(OBJS1) $(OBJS2) $(B) $(OUT)
 
 count:
 	wc $(SOURCE) $(HEADER)
