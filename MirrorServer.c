@@ -188,6 +188,7 @@ void* mirror_thread(void* infos_par)
     }
     else
     {
+        //this mutex is unlocked either in the if or the else below
     	pthread_mutex_lock(&idc_mtx);
         	idc = idc_array_get(idc_array, infos->id);
 
@@ -198,6 +199,7 @@ void* mirror_thread(void* infos_par)
         	//note that this device is done!
         	if (idc->counter == 0)
         	{
+                pthread_mutex_unlock(&idc_mtx);//we are done with the idc.unlock to avoid deadlocks!
                 //protect global var numDevicesDone
                 pthread_mutex_lock(&mtx);
             		numDevicesDone++;
@@ -212,9 +214,8 @@ void* mirror_thread(void* infos_par)
         	{//so when they make it 0 they will note that the device is done
                 // printf("Setting wont increase\n");
         		idc->wont_increase = 1;
+                pthread_mutex_unlock(&idc_mtx);
         	}
-
-        pthread_mutex_unlock(&idc_mtx);
     }
 
     /* Close socket */
@@ -332,15 +333,16 @@ void* worker_thread(void* null)
 	}
 
     printf("\t\tWorker %d exiting\n", pthread_self());
-	pthread_exit(NULL);
+	pthread_detach(pthread_self());
+    pthread_exit(NULL);
 }
 
 int main(int argc, char *argv[]) 
 {
     int port, threadnum, err, status, i;
     int id = 1;//ID for LIST requests
+    pthread_t thr;
     pthread_t* mthr_array;
-    pthread_t* wthr_array;
 
     //initialise mtxs cond_vars andm buffer
     pthread_mutex_init(&buff_mtx, 0);
@@ -366,10 +368,9 @@ int main(int argc, char *argv[])
     numDevicesDone = 0;
 
     //Create worker threads!
-    wthr_array = malloc(threadnum*sizeof(pthread_t));
     for (i=0; i<threadnum; i++)
     {
-		if ( (err = pthread_create(&(wthr_array[i]), NULL, worker_thread, (void *) NULL)) )  
+		if ( (err = pthread_create(&thr, NULL, worker_thread, (void *) NULL)) )  
 	    {
 			perror2("pthread_create", err);
 			exit(1);
@@ -468,19 +469,6 @@ int main(int argc, char *argv[])
         pthread_cond_broadcast(&buff_not_empty);
     pthread_mutex_unlock(&buff_mtx);
 
-        
-    for (i = 0; i<threadnum; i++)
-    {
-        printf("%d i = %d\n", pthread_self(), i);
-        printf("Thread %d join in\n", i);
-        if ( (err = pthread_join(wthr_array[i], (void **) &status)) ) 
-        {
-            perror2("pthread_join", err); /* termination */
-            // exit(1);
-        }
-        printf("Thread %d join out\n\n", i);
-    }
-
     fprintf(stderr, "--> ALLDONE!\n");
 
 
@@ -489,6 +477,5 @@ int main(int argc, char *argv[])
 
 	free(dirorfile);
 	free(mthr_array);
-	free(wthr_array);
     pthread_exit(NULL);
 }		
