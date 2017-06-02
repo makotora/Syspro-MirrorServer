@@ -11,5 +11,6 @@
 
 void perror_exit(char *message);
 int matchesDirOrFile(char* requested, char* given, char* saveDir, char** localPath);
+int count_digits(int number);
 
 #endif

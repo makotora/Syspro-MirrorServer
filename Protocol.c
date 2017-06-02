@@ -14,7 +14,7 @@ void sendMessage(int socket, char* message)
     	perror_exit("sendMessage-write");
 }
 
-void receiveFile(int socket, char* filePath)
+int receiveFile(int socket, char* filePath)
 {
 	char* buffer;
 	char message[BUFSIZE];
@@ -38,7 +38,7 @@ void receiveFile(int socket, char* filePath)
 	{
 		close(filefd);
 		free(buffer);
-		return;
+		return 0;
 	}
 
 	fileParts = fileSize / MaxBuffer;
@@ -78,6 +78,8 @@ void receiveFile(int socket, char* filePath)
 
 	close(filefd);
 	free(buffer);
+
+	return fileSize;
 }
 
 

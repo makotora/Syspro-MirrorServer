@@ -117,7 +117,7 @@ void* thread_content_server(void* socket)
     	fprintf(stderr, "Delay for this fetch is : %d\n", delay);
         // sleep(delay);
     	//last token is the path to the file (full path) for fetching
-    	token = strtok_r(NULL, " ", &savePtr);
+    	token = strtok_r(NULL, "", &savePtr);
     	fprintf(stderr, "\ttoken2 %s\n", token);
     	path = strdup(token);
 
@@ -157,23 +157,26 @@ int main(int argc, char *argv[])
     struct hostent *rem;
     
     //Read arguments....
-    strcpy(dirorfilename, "/home/mt/Desktop/DI/Syspro/prj3/testdir");
+    strcpy(dirorfilename, "/home/mt/");
     port = atoi(argv[1]);
     chdir(dirorfilename);
 
-    /* Create socket */
-    if ( (sock = socket(AF_INET, SOCK_STREAM, 0)) < 0 )
+    //Create socket for mirrorServer requests
+    sock = socket(AF_INET, SOCK_STREAM, 0);
+    if ( sock < 0 )
         perror_exit("socket");
+
+    int enable = 1;
+    if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) < 0)
+        perror_exit("setsockopt(SO_REUSEADDR) failed");
 
     server.sin_family = AF_INET;       /* Internet domain */
     server.sin_addr.s_addr = htonl(INADDR_ANY);
     server.sin_port = htons(port);      /* The given port */
     
-    /* Bind socket to address */
     if (bind(sock, serverptr, sizeof(server)) < 0)
         perror_exit("bind");
     
-    /* Listen for connections */
     if (listen(sock, LISTEN_QUEUE_SIZE) < 0)
     	perror_exit("listen");
     

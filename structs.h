@@ -48,27 +48,27 @@ void delays_free(delays** delays_ptr_ptr);
 void delays_add(delays* delays_ptr, char* id, int delay);
 int delays_get_by_id(delays* delays_ptr, char* id);
 
+typedef struct id_counter id_counter;
 struct id_counter
 {
 	char* id;
 	int counter;
 	int wont_increase;
+	id_counter* next;
 };
-typedef struct id_counter id_counter;
 
-struct id_counters_array
+struct id_counters_list
 {
-	id_counter* array;
-	int size;
-	int index;
+	id_counter* first;
+	id_counter* last;
 };
-typedef struct id_counters_array id_counters_array;
+typedef struct id_counters_list id_counters_list;
 
-id_counters_array* idc_array_create(int size);
-int idc_array_add(id_counters_array* idc_array, char* id);
-int idc_array_increase(id_counters_array* idc_array, char* id);
-int idc_array_decrease(id_counters_array* idc_array, char* id, int* wont_increase);
-id_counter* idc_array_get(id_counters_array* idc_array, char* id);
-void idc_array_free(id_counters_array** idc_array);
+id_counters_list* idc_list_create();
+int idc_list_add(id_counters_list* idc_list, char* id);
+int idc_list_increase(id_counters_list* idc_list, char* id);
+int idc_list_decrease(id_counters_list* idc_list, char* id, int* wont_increase);
+id_counter* idc_list_get(id_counters_list* idc_list, char* id);
+void idc_list_free(id_counters_list** idc_list);
 
 #endif

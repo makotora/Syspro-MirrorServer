@@ -66,3 +66,18 @@ int matchesDirOrFile(char* requested, char* given, char* saveDir, char** localPa
 
 	return -1;
 }
+
+
+int count_digits(int number)
+{
+	int counter = 0;
+
+	do
+	{
+		counter++;
+		number /= 10;
+	}
+	while (number != 0);
+
+	return counter;
+}

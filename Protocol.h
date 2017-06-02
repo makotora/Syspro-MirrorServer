@@ -20,7 +20,7 @@
 void receiveMessage(int socket, char* message);
 void sendMessage(int socket, char* message);
 
-void receiveFile(int socket, char* filePath);
+int receiveFile(int socket, char* filePath);
 void sendFile(int socket, char* filePath, int bufferSize);
 
 #endif

@@ -17,6 +17,7 @@
 #include "functions.h"
 #include "structs.h"
 
+#define LISTEN_QUEUE_SIZE 10
 #define BUFSIZE 1024
 #define BUFFER_SIZE 30
 
@@ -29,10 +30,12 @@ pthread_cond_t buff_not_full;
 
 int total_devices;
 int numDevicesDone;
+int filesTransferred;
+int bytesTransferred;
 char* dirname;
 //global structs
 Buffer* buffer; //buffer
-id_counters_array* idc_array;//array countaining a counter for files to fetch for each ID
+id_counters_list* idc_list;//list countaining a counter for files to fetch for each ID
 int terminate;
 
 void* mirror_thread(void* infos_par)
@@ -50,10 +53,14 @@ void* mirror_thread(void* infos_par)
     if (sock < 0)
     	perror_exit("socket");
 
+    int enable = 1;
+    if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) < 0)
+        perror_exit("setsockopt(SO_REUSEADDR) failed");
+
     rem = gethostbyname(infos->host);
     if (rem == NULL) 
     {	
-	   herror("gethostbyname");
+	   herror("mirror-gethostbyname");
 	   exit(1);
     }
     
@@ -113,9 +120,9 @@ void* mirror_thread(void* infos_par)
 
     //Afterwards, Content Server will send us the names of the files he contains
 	//Add the ones we need in the buffer
-	//Add record for this id in the idc_array.For each file pushed in the buffer, increment the counter for that id
+	//Add record for this id in the idc_list.For each file pushed in the buffer, increment the counter for that id
     pthread_mutex_lock(&idc_mtx);
-    	if ( idc_array_add(idc_array, infos->id) != 0)
+    	if ( idc_list_add(idc_list, infos->id) != 0)
     		exit(EXIT_FAILURE);
 	pthread_mutex_unlock(&idc_mtx);
 
@@ -136,7 +143,7 @@ void* mirror_thread(void* infos_par)
 
                 //increase counter for this id
                 pthread_mutex_lock(&idc_mtx);
-                    idc_array_increase(idc_array, infos->id);
+                    idc_list_increase(idc_list, infos->id);
                 pthread_mutex_unlock(&idc_mtx);
                 
                 // fprintf(stderr, "I need this!\n");
@@ -190,7 +197,7 @@ void* mirror_thread(void* infos_par)
     {
         //this mutex is unlocked either in the if or the else below
     	pthread_mutex_lock(&idc_mtx);
-        	idc = idc_array_get(idc_array, infos->id);
+        	idc = idc_list_get(idc_list, infos->id);
 
         	if (idc == NULL)
         		exit(EXIT_FAILURE);
@@ -243,6 +250,7 @@ void* worker_thread(void* null)
     struct sockaddr *serverptr = (struct sockaddr*)&server;
     struct hostent *rem;
     int sock;
+    int file_size;
     
     while (1)
     {
@@ -276,13 +284,17 @@ void* worker_thread(void* null)
     	sock = socket(AF_INET, SOCK_STREAM, 0);
         if ( sock < 0 )
     		perror_exit("socket");
+
+        int enable = 1;
+        if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) < 0)
+            perror_exit("setsockopt(SO_REUSEADDR) failed");
     
 		printf("\t\tWorker Thread %d Created socket %d\n", pthread_self(), sock);
 
         rem = gethostbyname(buffer_element.host);
 	    if (rem == NULL) 
 	    {	
-		   herror("gethostbyname");
+		   herror("worker-gethostbyname");
 		   exit(1);
 	    }
 	    
@@ -300,14 +312,19 @@ void* worker_thread(void* null)
 	    sendMessage(sock, buf);
 
         //Receive the file
-	    receiveFile(sock, buffer_element.local_path);
+	    file_size = receiveFile(sock, buffer_element.local_path);
+
+        pthread_mutex_lock(&mtx);
+            filesTransferred++;
+            bytesTransferred += file_size;
+        pthread_mutex_unlock(&mtx);
     	
 	    //check if this fetch was the last for this device (the device is matched to a specific ID)
 	    int id_counter;
 	    int wont_increase;
 
         pthread_mutex_lock(&idc_mtx);
-	       id_counter = idc_array_decrease(idc_array, buffer_element.id, &wont_increase);
+	       id_counter = idc_list_decrease(idc_list, buffer_element.id, &wont_increase);
         pthread_mutex_unlock(&idc_mtx);
 
         if (id_counter == 0 && wont_increase == 1)//if we made the counter 0,and the counter for this id is final
@@ -339,10 +356,17 @@ void* worker_thread(void* null)
 
 int main(int argc, char *argv[]) 
 {
-    int port, threadnum, err, status, i;
-    int id = 1;//ID for LIST requests
+    char buf[BUFSIZE];
+    int threadnum, err, status, i;
     pthread_t thr;
     pthread_t* mthr_array;
+    //socket vars
+    int sock, port;
+    struct sockaddr_in server, client;
+    socklen_t clientlen;
+    struct sockaddr *serverptr=(struct sockaddr *)&server;
+    struct sockaddr *clientptr=(struct sockaddr *)&client;
+    struct hostent *rem;
 
     //initialise mtxs cond_vars andm buffer
     pthread_mutex_init(&buff_mtx, 0);
@@ -357,14 +381,11 @@ int main(int argc, char *argv[])
    
     //read arguments
     threadnum = 3;
-    char host_name[BUFSIZE];
     dirname = "temp";
     mkdir(dirname, 0777); 
-    total_devices = 3;
-    char* dirorfile;
 
     //initialise array of file for fetch counters (for this session)
-    idc_array = idc_array_create(total_devices);
+    idc_list = idc_list_create();
     numDevicesDone = 0;
 
     //Create worker threads!
@@ -377,76 +398,154 @@ int main(int argc, char *argv[])
 		}
     }
     
+
     port = atoi(argv[1]);
-    strcpy(host_name, "localhost");
+    //Create socket
+    sock = socket(AF_INET, SOCK_STREAM, 0);
+    if ( sock < 0 )
+        perror_exit("socket");
 
-    //RECEIVE MESSAGE FROM INITIATOR
+    int enable = 1;
+    if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) < 0)
+        perror_exit("setsockopt(SO_REUSEADDR) failed");
+
+    server.sin_family = AF_INET;       /* Internet domain */
+    server.sin_addr.s_addr = htonl(INADDR_ANY);
+    server.sin_port = htons(port);      /* The given port */
+    
+    if (bind(sock, serverptr, sizeof(server)) < 0)
+        perror_exit("bind");
+    
+    if (listen(sock, LISTEN_QUEUE_SIZE) < 0)
+        perror_exit("listen");
+
+    //Accept connection (Just one, from initiator)
+    int newsock = accept(sock, clientptr, &clientlen);
+    if (newsock < 0) 
+        perror_exit("accept");
+    
+    /* Find client's address */
+    if ((rem = gethostbyaddr((char *) &client.sin_addr.s_addr, sizeof(client.sin_addr.s_addr), client.sin_family)) == NULL) 
+    {
+        herror("gethostbyaddr");
+        exit(1);
+    }
+
+    printf("\nAccepted connection from '%s'\n", rem->h_name);
+
+    //RECEIVE REQUESTS FROM INITIATOR
+    total_devices = 0;
     int request_index = 0;
-    int requests_num = 3;
-    mthr_array = malloc(requests_num*sizeof(pthread_t));
+    int requests_max = 5;
+    char* token;
+    char* savePtr;
+    int id = 1;//ID counter for requests
+    mirror_thread_params* infos;
+    mthr_array = malloc(requests_max*sizeof(pthread_t));
 
-    dirorfile = malloc(100*sizeof(char));
-    strcpy(dirorfile, "/home/mt/Desktop/DI/Syspro/prj3/testdir/fileLefterisGamaeiBazolia");
-
-    mirror_thread_params* infos = malloc(sizeof(mirror_thread_params));
-    infos->dirname = strdup(dirname);
-    infos->host = malloc( (strlen(host_name) + 1)*sizeof(char) );
-    strcpy(infos->host, host_name);
-    infos->dirorfile = malloc( (strlen(dirorfile) + 1)*sizeof(char) );
-    strcpy(infos->dirorfile, dirorfile);
-    infos->port = port;
-    infos->id = malloc(	50*sizeof(char) );
-    sprintf(infos->id, "%s.%d", host_name, id);
-    id++;
-    infos->delay = 2;
-
-    if ( (err = pthread_create(&(mthr_array[request_index++]), NULL, mirror_thread, (void *) infos)) )  
+    //receive requests and create one mirror thread for each request
+    receiveMessage(newsock, buf);
+    while ( strcmp(buf, "EOR") )//until we receive EndOfRequests message
     {
-		perror2("pthread_create", err);
-		exit(1);
-	}
+        total_devices++;
 
-	infos = malloc(sizeof(mirror_thread_params));
-    infos->dirname = strdup(dirname);
-    infos->host = malloc( (strlen(host_name) + 1)*sizeof(char) );
-    strcpy(infos->host, host_name);
-    strcpy(dirorfile, "prj3/testdir/dirLefterisOBabasSas");
-    infos->dirorfile = malloc( (strlen(dirorfile) + 1)*sizeof(char) );
-    strcpy(infos->dirorfile, dirorfile);
-    infos->port = port;
-    infos->id = malloc(	50*sizeof(char) );
-    sprintf(infos->id, "%s.%d", host_name, id);
-    id++;
-    infos->delay = 3;
+        infos = malloc(sizeof(mirror_thread_params));
+        infos->dirname = strdup(dirname);
 
-    if ( (err = pthread_create(&(mthr_array[request_index++]), NULL, mirror_thread, (void *) infos)) )  
-    {
-		perror2("pthread_create", err);
-		exit(1);
-	}
+        token = strtok_r(buf, ":", &savePtr);
+        infos->host = strdup(token);
+        token = strtok_r(NULL, ":", &savePtr);
+        infos->port = atoi(token);
+        token = strtok_r(NULL, ":", &savePtr);
+        infos->dirorfile = strdup(token);
+        token = strtok_r(NULL, ":", &savePtr);
+        infos->delay = atoi(token);
 
-	infos = malloc(sizeof(mirror_thread_params));
-    infos->dirname = strdup(dirname);
-    infos->host = malloc( (strlen(host_name) + 1)*sizeof(char) );
-    strcpy(infos->host, host_name);
-    strcpy(dirorfile, "prj3/testdir/");
-    infos->dirorfile = malloc( (strlen(dirorfile) + 1)*sizeof(char) );
-    strcpy(infos->dirorfile, dirorfile);
-    infos->port = port;
-    infos->id = malloc(	50*sizeof(char) );
-    sprintf(infos->id, "%s.%d", host_name, id);
-    id++;
-    infos->delay = 1;
+        infos->id = malloc( (strlen(infos->host) + count_digits(id) + 2)*sizeof(char) );
+        sprintf(infos->id, "%s.%d", infos->host, id);
+        id++;
 
-    if ( (err = pthread_create(&(mthr_array[request_index++]), NULL, mirror_thread, (void *) infos)) )  
-    {
-		perror2("pthread_create", err);
-		exit(1);
-	}
+        if (request_index == requests_max)
+        {
+            requests_max *= 2;
+            mthr_array = realloc(mthr_array, requests_max*sizeof(pthread_t));
+        }
 
-	for (request_index = 0; request_index < requests_num; request_index++)
+        if ( (err = pthread_create(&(mthr_array[request_index++]), NULL, mirror_thread, (void *) infos)) )  
+        {
+            perror2("pthread_create", err);
+            exit(1);
+        }
+
+        receiveMessage(newsock, buf);
+    }
+
+
+
+ //    mthr_array = malloc(requests_num*sizeof(pthread_t));
+
+ //    dirorfile = malloc(100*sizeof(char));
+ //    strcpy(dirorfile, "/home/mt/Desktop/DI/Syspro/prj3/testdir/fileLefterisGamaeiBazolia");
+
+ //    mirror_thread_params* infos = malloc(sizeof(mirror_thread_params));
+ //    infos->dirname = strdup(dirname);
+ //    infos->host = malloc( (strlen(host_name) + 1)*sizeof(char) );
+ //    strcpy(infos->host, host_name);
+ //    infos->dirorfile = malloc( (strlen(dirorfile) + 1)*sizeof(char) );
+ //    strcpy(infos->dirorfile, dirorfile);
+ //    infos->port = port;
+ //    infos->id = malloc(	50*sizeof(char) );
+ //    sprintf(infos->id, "%s.%d", host_name, id);
+ //    id++;
+ //    infos->delay = 2;
+
+ //    if ( (err = pthread_create(&(mthr_array[request_index++]), NULL, mirror_thread, (void *) infos)) )  
+ //    {
+	// 	perror2("pthread_create", err);
+	// 	exit(1);
+	// }
+
+	// infos = malloc(sizeof(mirror_thread_params));
+ //    infos->dirname = strdup(dirname);
+ //    infos->host = malloc( (strlen(host_name) + 1)*sizeof(char) );
+ //    strcpy(infos->host, host_name);
+ //    strcpy(dirorfile, "prj3/testdir/dirLefterisOBabasSas");
+ //    infos->dirorfile = malloc( (strlen(dirorfile) + 1)*sizeof(char) );
+ //    strcpy(infos->dirorfile, dirorfile);
+ //    infos->port = port;
+ //    infos->id = malloc(	50*sizeof(char) );
+ //    sprintf(infos->id, "%s.%d", host_name, id);
+ //    id++;
+ //    infos->delay = 3;
+
+ //    if ( (err = pthread_create(&(mthr_array[request_index++]), NULL, mirror_thread, (void *) infos)) )  
+ //    {
+	// 	perror2("pthread_create", err);
+	// 	exit(1);
+	// }
+
+	// infos = malloc(sizeof(mirror_thread_params));
+ //    infos->dirname = strdup(dirname);
+ //    infos->host = malloc( (strlen(host_name) + 1)*sizeof(char) );
+ //    strcpy(infos->host, host_name);
+ //    strcpy(dirorfile, "prj3/testdir/");
+ //    infos->dirorfile = malloc( (strlen(dirorfile) + 1)*sizeof(char) );
+ //    strcpy(infos->dirorfile, dirorfile);
+ //    infos->port = port;
+ //    infos->id = malloc(	50*sizeof(char) );
+ //    sprintf(infos->id, "%s.%d", host_name, id);
+ //    id++;
+ //    infos->delay = 1;
+
+ //    if ( (err = pthread_create(&(mthr_array[request_index++]), NULL, mirror_thread, (void *) infos)) )  
+ //    {
+	// 	perror2("pthread_create", err);
+	// 	exit(1);
+	// }
+
+	for (i = 0; i < total_devices; i++)
 	{
-		if ( (err = pthread_join(mthr_array[request_index], (void **) &status)) ) 
+		if ( (err = pthread_join(mthr_array[i], (void **) &status)) ) 
 		{
 			perror2("pthread_join", err); /* termination */
 			exit(1);
@@ -470,12 +569,15 @@ int main(int argc, char *argv[])
     pthread_mutex_unlock(&buff_mtx);
 
     fprintf(stderr, "--> ALLDONE!\n");
+    sendMessage(newsock, "AllDone!");
 
 
-    idc_array_free(&idc_array);
+    close(newsock);
+    close(sock);
+
+    idc_list_free(&idc_list);
 	Buffer_free(&buffer);
 
-	free(dirorfile);
 	free(mthr_array);
     pthread_exit(NULL);
 }		

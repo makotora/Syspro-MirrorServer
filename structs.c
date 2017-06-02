@@ -79,133 +79,139 @@ int delays_get_by_id(delays* delays_ptr, char* id)
 
 
 //ID COUNTER ARRAY
-id_counters_array* idc_array_create(int size)
+id_counters_list* idc_list_create()
 {
-	id_counters_array* new_idc_array = malloc(sizeof(id_counters_array));
+	id_counters_list* new_idc_list = malloc(sizeof(id_counters_list));
 
-	if (new_idc_array == NULL)
+	if (new_idc_list == NULL)
 	{
-		fprintf(stderr, "idc_array_create: malloc error\n");
+		fprintf(stderr, "idc_list_create: malloc error\n");
 		exit(EXIT_FAILURE);
 	}
 
-	new_idc_array->array = malloc(size*sizeof(id_counter));
+	new_idc_list->first = NULL;
+	new_idc_list->last = NULL;
 
-	if (new_idc_array->array == NULL)
-	{
-		fprintf(stderr, "idc_array_create: malloc error\n");
-		exit(EXIT_FAILURE);
-	}
-
-	new_idc_array->size = size;
-	new_idc_array->index = 0;
-
-	return new_idc_array;
+	return new_idc_list;
 }
 
 
-int idc_array_add(id_counters_array* idc_array, char* id)
+int idc_list_add(id_counters_list* idc_list, char* id)
 {
 	fprintf(stderr, "Adding %s\n", id);
-	if (idc_array->index == idc_array->size)
+
+	id_counter* new_idc = malloc(sizeof(id_counter));
+	if (new_idc == NULL)
 	{
-		fprintf(stderr, "IDC_array_add error! Array is full, cannot add!");
-		return -1;
+		fprintf(stderr, "idc_list_create: malloc error\n");
+		exit(EXIT_FAILURE);
 	}
 
-	//(else)
-	id_counter* array = idc_array->array; 
-	array[idc_array->index].id = strdup(id);
-	array[idc_array->index].counter = 0;
-	array[idc_array->index].wont_increase = 0;
-	idc_array->index++;
+	new_idc->id = strdup(id);
+	new_idc->counter = 0;
+	new_idc->wont_increase = 0;
+	new_idc->next = NULL;
+
+	if (idc_list->first == NULL)
+	{
+		idc_list->first = new_idc;
+		idc_list->last = new_idc;
+	}
+	else
+	{
+		idc_list->last->next = new_idc;
+		idc_list->last = new_idc;
+	}
 
 	return 0;
 }
 
-int idc_array_increase(id_counters_array* idc_array, char* id)
+int idc_list_increase(id_counters_list* idc_list, char* id)
 {
-	//find that id
-	int i;
-	int max = idc_array->index;
-	id_counter* array = idc_array->array;
+	//find that id_counter
+	id_counter* current = idc_list->first;
 
-	for (i=0; i<max; i++)
+	while (current != NULL)
 	{
-		if (!strcmp(array[i].id, id))
+		if (!strcmp(current->id, id))
 		{
-			fprintf(stderr, "Increasing %s.New counter %d!\n", id, array[i].counter + 1);
-			array[i].counter++;
-			return array[i].counter;
+			fprintf(stderr, "Increasing %s.New counter %d!\n", id, current->counter + 1);
+			current->counter++;
+			return current->counter;
 		}
+
+		current = current->next;
 	}
 
 	//if we didnt return inside,no such id!
-	fprintf(stderr, "idc_array_increase error!No such id!");
+	fprintf(stderr, "idc_list_increase error!No such id!");
 	fprintf(stderr, "ID: %s\n", id);
 	return -999;	
 }
 
 
-int idc_array_decrease(id_counters_array* idc_array, char* id, int* wont_increase)
+int idc_list_decrease(id_counters_list* idc_list, char* id, int* wont_increase)
 {
-	//find that id
-	int i;
-	int max = idc_array->index;
-	id_counter* array = idc_array->array;
+	//find that id_counter
+	id_counter* current = idc_list->first;
 
-	for (i=0; i<max; i++)
+	while (current != NULL)
 	{
-		if (!strcmp(array[i].id, id))
+		if (!strcmp(current->id, id))
 		{
-			fprintf(stderr, "Decreasing %s.New counter %d!\n", id, array[i].counter - 1);
-			array[i].counter--;
-			*wont_increase = array[i].wont_increase;
-			return array[i].counter;
+			fprintf(stderr, "Decreasing %s.New counter %d!\n", id, current->counter - 1);
+			current->counter--;
+			*wont_increase = current->wont_increase;
+			return current->counter;
 		}
+
+		current = current->next;
 	}
 
 	//if we didnt return inside,no such id!
-	fprintf(stderr, "idc_array_decrease error!No such id!");
+	fprintf(stderr, "idc_list_decrease error!No such id!");
 	fprintf(stderr, "ID: %s\n", id);
 	return -999;	
 }
 
 
-id_counter* idc_array_get(id_counters_array* idc_array, char* id)
+id_counter* idc_list_get(id_counters_list* idc_list, char* id)
 {
-	//find that id
-	int i;
-	int max = idc_array->index;
-	id_counter* array = idc_array->array;
+	//find that id_counter
+	id_counter* current = idc_list->first;
 
-	for (i=0; i<max; i++)
+	while (current != NULL)
 	{
-		if (!strcmp(array[i].id, id))
+		if (!strcmp(current->id, id))
 		{
 			fprintf(stderr, "Getting %s!\n", id);
-			return &(array[i]);
+			return current;
 		}
+
+		current = current->next;
 	}
 
 	//if we didnt return inside,no such id!
-	fprintf(stderr, "idc_array_set error!No such id!");
+	fprintf(stderr, "idc_list_get error!No such id!");
 	fprintf(stderr, "ID: %s\n", id);
 	return NULL;	
 }
 
 
-void idc_array_free(id_counters_array** idc_array)
+void idc_list_free(id_counters_list** idc_list)
 {
-	int i;
-	int max = (*idc_array)->index;
-	id_counter* array = (*idc_array)->array;
+	id_counters_list* idc_list_ptr = *idc_list;
+	id_counter* current = idc_list_ptr->first;
+	id_counter* target;
 
-	for (i=0; i<max; i++)
+	while (current != NULL)
 	{
-		free(array[i].id);
+		target = current;
+		current = current->next;
+
+		free(target->id);
+		free(target);
 	}
 
-	free(array);
-	free(*idc_array);
+	free(*idc_list);
 }
