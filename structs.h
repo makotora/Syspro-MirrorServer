@@ -48,6 +48,8 @@ void delays_free(delays** delays_ptr_ptr);
 void delays_add(delays* delays_ptr, char* id, int delay);
 int delays_get_by_id(delays* delays_ptr, char* id);
 
+
+//List of (file) counters for each Request ID (for each device)
 typedef struct id_counter id_counter;
 struct id_counter
 {
@@ -70,5 +72,26 @@ int idc_list_increase(id_counters_list* idc_list, char* id);
 int idc_list_decrease(id_counters_list* idc_list, char* id, int* wont_increase);
 id_counter* idc_list_get(id_counters_list* idc_list, char* id);
 void idc_list_free(id_counters_list** idc_list);
+
+
+//Server list (Distinct content servers)
+typedef struct server_info server_info;
+struct server_info
+{
+	char* address;
+	int port;
+	server_info* next;
+};
+
+struct server_list
+{
+	server_info* first;
+	server_info* last;
+};
+typedef struct server_list server_list;
+
+server_list* server_list_create();
+void server_list_add(server_list* sl, char* address, int port);
+void server_list_free(server_list** sl);
 
 #endif

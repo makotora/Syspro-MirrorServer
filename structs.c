@@ -1,5 +1,6 @@
 #include "structs.h"
 
+#define DEBUG_PRINTS 0
 
 //DELAYS
 delays* delays_create()
@@ -98,7 +99,8 @@ id_counters_list* idc_list_create()
 
 int idc_list_add(id_counters_list* idc_list, char* id)
 {
-	fprintf(stderr, "Adding %s\n", id);
+	if (DEBUG_PRINTS)
+		fprintf(stderr, "Adding %s\n", id);
 
 	id_counter* new_idc = malloc(sizeof(id_counter));
 	if (new_idc == NULL)
@@ -135,7 +137,8 @@ int idc_list_increase(id_counters_list* idc_list, char* id)
 	{
 		if (!strcmp(current->id, id))
 		{
-			fprintf(stderr, "Increasing %s.New counter %d!\n", id, current->counter + 1);
+			if (DEBUG_PRINTS)
+				fprintf(stderr, "Increasing %s.New counter %d!\n", id, current->counter + 1);
 			current->counter++;
 			return current->counter;
 		}
@@ -159,7 +162,8 @@ int idc_list_decrease(id_counters_list* idc_list, char* id, int* wont_increase)
 	{
 		if (!strcmp(current->id, id))
 		{
-			fprintf(stderr, "Decreasing %s.New counter %d!\n", id, current->counter - 1);
+			if (DEBUG_PRINTS)
+				fprintf(stderr, "Decreasing %s.New counter %d!\n", id, current->counter - 1);
 			current->counter--;
 			*wont_increase = current->wont_increase;
 			return current->counter;
@@ -184,7 +188,8 @@ id_counter* idc_list_get(id_counters_list* idc_list, char* id)
 	{
 		if (!strcmp(current->id, id))
 		{
-			fprintf(stderr, "Getting %s!\n", id);
+			if (DEBUG_PRINTS)
+				fprintf(stderr, "Getting %s!\n", id);
 			return current;
 		}
 
@@ -214,4 +219,82 @@ void idc_list_free(id_counters_list** idc_list)
 	}
 
 	free(*idc_list);
+}
+
+
+//Server list
+server_list* server_list_create()
+{
+	server_list* new_sl = malloc(sizeof(server_list));
+
+	if (new_sl == NULL)
+	{
+		fprintf(stderr, "server_list_create: malloc error!\n");
+		exit(EXIT_FAILURE);
+	}
+
+	new_sl->first = NULL;
+	new_sl->last = NULL;
+
+	return new_sl;
+}
+
+
+void server_list_add(server_list* sl, char* address, int port)
+{
+	//first make sure that this server_info is not already in the list
+	//if it is.just return
+	server_info* current = sl->first;
+
+	while (current != NULL)
+	{
+		//it is already in the list
+		if ( !strcmp(current->address, address) && current->port == port)
+			return;
+
+		current = current->next;
+	}
+
+	//if we got here its not in the list!Add it
+	server_info* new_server_info = malloc(sizeof(server_info));
+
+	if (new_server_info == NULL)
+	{
+		fprintf(stderr, "server_list_add: malloc error!\n");
+		exit(EXIT_FAILURE);
+	}
+
+	new_server_info->address = strdup(address);
+	new_server_info->port = port;
+
+	if (sl->first == NULL)
+	{
+		sl->first = new_server_info;
+		sl->last = new_server_info;
+	}
+	else
+	{
+		sl->last->next = new_server_info;
+		sl->last = new_server_info;
+	}
+
+}
+
+
+void server_list_free(server_list** sl)
+{
+	server_list* sl_ptr = *sl;
+	server_info* current = sl_ptr->first;
+	server_info* target;
+
+	while (current != NULL)
+	{
+		target = current;
+		current = current->next;
+
+		free(target->address);
+		free(target);
+	}
+
+	free(*sl);
 }

@@ -55,19 +55,19 @@ int main(int argc, char* argv[])
 	if (mirrorAddress == NULL)
 	{
 		fprintf(stderr, "Error! Argument MirrorServerAddress was not given!\n");
-		fprintf(stderr, "Usage: './MirrorInitiator -n <MirrorServerAddress> -p <MirrorServerPort> \\\\\n-s <ContentServerAddress1:ContentServerPort1:dirorfile1:delay1, \\\\\\\nContentServerAddress2:ContentServerPort2:dirorfile2:delay2, ...>\n'");
+		fprintf(stderr, "Usage: './MirrorInitiator -n <MirrorServerAddress> -p <MirrorServerPort> \\\\\n-s <ContentServerAddress1:ContentServerPort1:dirorfile1:delay1, \\\\\\\nContentServerAddress2:ContentServerPort2:dirorfile2:delay2, ...>'\n");
 		return -1;
 	}
 	else if (mirrorPort == -1)
 	{
 		fprintf(stderr, "Error! Argument MirrorServerPort was not given!\n");
-		fprintf(stderr, "Usage: './MirrorInitiator -n <MirrorServerAddress> -p <MirrorServerPort> \\\\\n-s <ContentServerAddress1:ContentServerPort1:dirorfile1:delay1, \\\\\\\nContentServerAddress2:ContentServerPort2:dirorfile2:delay2, ...>\n'");
+		fprintf(stderr, "Usage: './MirrorInitiator -n <MirrorServerAddress> -p <MirrorServerPort> \\\\\n-s <ContentServerAddress1:ContentServerPort1:dirorfile1:delay1, \\\\\\\nContentServerAddress2:ContentServerPort2:dirorfile2:delay2, ...>'\n");
 		return -1;
 	}
 	else if (requests == NULL)
 	{
 		fprintf(stderr, "Error! No requests given! (-s)\n");
-		fprintf(stderr, "Usage: './MirrorInitiator -n <MirrorServerAddress> -p <MirrorServerPort> \\\\\n-s <ContentServerAddress1:ContentServerPort1:dirorfile1:delay1, \\\\\\\nContentServerAddress2:ContentServerPort2:dirorfile2:delay2, ...>\n'");
+		fprintf(stderr, "Usage: './MirrorInitiator -n <MirrorServerAddress> -p <MirrorServerPort> \\\\\n-s <ContentServerAddress1:ContentServerPort1:dirorfile1:delay1, \\\\\\\nContentServerAddress2:ContentServerPort2:dirorfile2:delay2, ...>'\n");
 		return -1;
 	}
 
@@ -83,10 +83,6 @@ int main(int argc, char* argv[])
     sock = socket(AF_INET, SOCK_STREAM, 0);
     if ( sock < 0 )
 		perror_exit("socket");
-
-	int enable = 1;
-    if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) < 0)
-    	perror_exit("setsockopt(SO_REUSEADDR) failed");
 
     rem = gethostbyname(mirrorAddress);
     if (rem == NULL) 
@@ -110,6 +106,8 @@ int main(int argc, char* argv[])
 	int tokenSize;
 	int counter;
 
+	//send start of requests (SOR) message
+	sendMessage(sock, "SOR");
 	while (token != NULL)
 	{
 		//check if it is a valid request (has exactly 3 ':')
@@ -134,7 +132,15 @@ int main(int argc, char* argv[])
 	sendMessage(sock, "EOR");
 
 	receiveMessage(sock, buf);
-	fprintf(stderr, "MirrorServer sent me '%s'\n", buf);
+	if ( !strcmp(buf, "STATS"))
+	{
+		receiveMessage(sock, buf);
+		fprintf(stderr, "Received stats from MirrorServer\n%s\n", buf);	
+	}
+	else
+	{
+		fprintf(stderr, "Received unknown message '%s' from MirrorServer\n", buf);	
+	}
 
 	return 0;
 }

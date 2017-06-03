@@ -33,6 +33,12 @@ int receiveFile(int socket, char* filePath)
 	//calculate how many FULL BUFFER messages it will take to receive the whole file
 	//if the file requires an extra (not full) message, we ll do that afterwards
 	int filefd = open(filePath, O_WRONLY | O_CREAT, 0777);
+	if (filefd == -1)
+	{
+		fprintf(stderr, "filePath: %s\n", filePath);
+		perror_exit("receiveFile-open");
+	}
+	
 	//for empty files,we are done here
 	if (fileSize == 0)
 	{
@@ -43,9 +49,6 @@ int receiveFile(int socket, char* filePath)
 
 	fileParts = fileSize / MaxBuffer;
 	lastPartBytes = fileSize % MaxBuffer;
-
-	if (filefd == -1)
-		perror_exit("receiveFile-open");
 
 	for (i=0; i<fileParts; i++)
 	{

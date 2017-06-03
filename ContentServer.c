@@ -17,9 +17,13 @@
 
 #define LISTEN_QUEUE_SIZE 20
 #define BUFSIZE 1024
+#define PRINTS 0
+#define PRINTS2 1
 
+int sock;
 delays* delays_list;
-pthread_mutex_t delays_mtx;
+int terminate;
+pthread_mutex_t mtx;
 
 void* thread_content_server(void* socket) 
 {
@@ -39,7 +43,9 @@ void* thread_content_server(void* socket)
 
     //Receive request message
     receiveMessage(newsock, buf);
-    fprintf(stderr, "\nContentServerThread: Received '%s' from MirrorServer!\n", buf);
+
+    if (PRINTS2)
+        fprintf(stderr, "\tContentServerThread received: '%s'\n", buf);
     
     //get type of request
     token = strtok_r(buf, " ", &savePtr);
@@ -58,9 +64,9 @@ void* thread_content_server(void* socket)
     			perror_exit("fdopen");
 
     	//add delay to delays list
-    	pthread_mutex_lock(&delays_mtx);
+    	pthread_mutex_lock(&mtx);
         	delays_add(delays_list, id, delay);
-    	pthread_mutex_unlock(&delays_mtx);
+    	pthread_mutex_unlock(&mtx);
 
 
     	//First find the directories and send their names
@@ -99,14 +105,15 @@ void* thread_content_server(void* socket)
     //if its a FETCH request
     else if ( !strcmp(token, "FETCH") )
     {
-    	fprintf(stderr, "ContentServer thread: Received a FETCH request!\n");
+        if (PRINTS)
+    	   fprintf(stderr, "\tContentServerThread: Dealing with a FETCH request!\n");
+
     	token = strtok_r(NULL, " ", &savePtr);//next token is the ID of the request
-    	fprintf(stderr, "\ttoken1 %s\n", token);
     	id = strdup(token);
 
-    	pthread_mutex_lock(&delays_mtx);
+    	pthread_mutex_lock(&mtx);
     	delay = delays_get_by_id(delays_list, id);
-    	pthread_mutex_unlock(&delays_mtx);
+    	pthread_mutex_unlock(&mtx);
 
     	if (delay == -1)
     	{
@@ -114,26 +121,43 @@ void* thread_content_server(void* socket)
     		exit(EXIT_FAILURE);
     	}
 
-    	fprintf(stderr, "Delay for this fetch is : %d\n", delay);
-        // sleep(delay);
+    	if (PRINTS)
+            fprintf(stderr, "\tContentServerThread: Delay for this fetch is : %d\n", delay);
+
     	//last token is the path to the file (full path) for fetching
     	token = strtok_r(NULL, "", &savePtr);
-    	fprintf(stderr, "\ttoken2 %s\n", token);
     	path = strdup(token);
 
-    	sendFile(newsock, path, BUFSIZE);
+
+        if (PRINTS2)
+            fprintf(stderr, "\tContentServerThread: Sending file %s\n", path);        
+    	
+        //first sleep for delay seconds,than send the file
+        sleep(delay);
+        sendFile(newsock, path, BUFSIZE);
 
     	free(id);
     	free(path);
     }
+    else if ( !strcmp(token, "KYS") )//If he told me to kill my self
+    {
+        if (PRINTS2)
+        {
+            fprintf(stderr, "ContentServerThread: Received a KYS request!\n");
+            fprintf(stderr, "ContentServerThread: About to terminate me and ContentServer!\n");
+        }
+        
+        pthread_mutex_lock(&mtx);
+            terminate = 1;
+            shutdown(sock, SHUT_RDWR);//Brutally cancel possible stuck 'accept' calls so the content server can terminate
+        pthread_mutex_unlock(&mtx);
+    }
     else
     {
-    	fprintf(stderr, "ContentServer thread: Received an unknown request! : '%s'", token);
+    	fprintf(stderr, "<!>ContentServerThread: Received an unknown request! : '%s'", token);
     }
-    
-    printf("Closing connection.\n\n");
 
-    close(newsock);	  /* Close socket */
+    close(newsock);
     newsock = -1;
     free(socketPtr);
 
@@ -145,30 +169,63 @@ void* thread_content_server(void* socket)
 int main(int argc, char *argv[]) 
 {
 	//malloc for global lists
-	char dirorfilename[50];
 	delays_list = delays_create();
-	pthread_mutex_init(&delays_mtx, 0);
+	pthread_mutex_init(&mtx, 0);
 
-    int port, sock;
     struct sockaddr_in server, client;
-    socklen_t clientlen;
+    socklen_t clientlen = sizeof(client);
     struct sockaddr *serverptr=(struct sockaddr *)&server;
     struct sockaddr *clientptr=(struct sockaddr *)&client;
     struct hostent *rem;
     
     //Read arguments....
-    strcpy(dirorfilename, "/home/mt/");
-    port = atoi(argv[1]);
+    int port = -1;
+    char* dirorfilename = NULL;
+    
+    int index = 1;
+
+    //Read arguments
+    while (index < argc)
+    {
+        if ( !strcmp(argv[index], "-p") )
+        {
+            port = atoi(argv[index + 1]);
+            index++;
+        }
+        else if ( !strcmp(argv[index], "-d") )
+        {
+            dirorfilename = argv[index + 1];
+            index++;
+        }
+        else
+        {
+            fprintf(stderr, "Skipping unknown argument '%s'.\n", argv[index]);
+        }
+
+        index++;
+    }
+
+
+    if (port == -1)
+    {
+        fprintf(stderr, "Error! Argument port was not given!\n");
+        fprintf(stderr, "Usage: './ContentServer -p <port> -d <dirorfilename>'\n");
+        return -1;
+    }
+    else if (dirorfilename == NULL)
+    {
+        fprintf(stderr, "Error! Argument dirorfilename was not given!\n");
+        fprintf(stderr, "Usage: './ContentServer -p <port> -d <dirorfilename>'\n");
+        return -1;
+    }
+
+    //change dir to the directory this content server is "in charge" of
     chdir(dirorfilename);
 
     //Create socket for mirrorServer requests
     sock = socket(AF_INET, SOCK_STREAM, 0);
     if ( sock < 0 )
         perror_exit("socket");
-
-    int enable = 1;
-    if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) < 0)
-        perror_exit("setsockopt(SO_REUSEADDR) failed");
 
     server.sin_family = AF_INET;       /* Internet domain */
     server.sin_addr.s_addr = htonl(INADDR_ANY);
@@ -179,26 +236,33 @@ int main(int argc, char *argv[])
     
     if (listen(sock, LISTEN_QUEUE_SIZE) < 0)
     	perror_exit("listen");
-    
-    printf("Listening for connections to port %d\n", port);
 
-    while (1) 
+    if (PRINTS)    
+        printf("ContentServer: Listening for connections to port %d\n", port);
+    terminate = 0;
+
+    while (terminate == 0) 
     { 
     	clientlen = sizeof(client);
     	int* newsock = malloc(sizeof(int));
-        /* accept connection */
-    	if ((*newsock = accept(sock, clientptr, &clientlen)) < 0) perror_exit("accept");
+
+    	if ((*newsock = accept(sock, clientptr, &clientlen)) < 0)
+        {
+            if (terminate == 1)
+            {
+                free(newsock);
+                break;
+            }
+            else
+                perror_exit("accept");
+        }
     	
-    	/* Find client's address */
    		if ((rem = gethostbyaddr((char *) &client.sin_addr.s_addr, sizeof(client.sin_addr.s_addr), client.sin_family)) == NULL) 
    		{
   	    	herror("gethostbyaddr");
   	    	exit(1);
   	    }
-   	
-   		printf("\nAccepted connection from '%s'\n", rem->h_name);
-
-    	
+   		
     	pthread_t thr;
     	int err;
 
@@ -210,8 +274,12 @@ int main(int argc, char *argv[])
     	
     }
 
+    if (PRINTS)
+    {
+        fprintf(stderr, "ContentServer: Terminating!\n");
+    }
+
     delays_free(&delays_list);
     close(sock);
-
     pthread_exit(NULL);
 }
