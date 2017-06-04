@@ -23,7 +23,7 @@
 #define MAX_RECONNECTS 100
 
 //prints with many details
-#define PRINTS 1
+#define PRINTS 0
 
 //basic prints
 #define PRINTS2 1

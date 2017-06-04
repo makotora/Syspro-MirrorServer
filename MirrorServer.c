@@ -29,10 +29,10 @@
 #define PRINTS2 1
 
 //tell content servers included in requests to terminate (after we are done with them)
-#define KILL_CONTENT_SERVERS 0
+#define KILL_CONTENT_SERVERS 1
 
 //mirror server keeps_running forever (and accept many initiator requests)
-#define KEEP_RUNNING 1
+#define KEEP_RUNNING 0
 
 pthread_mutex_t buff_mtx;
 pthread_mutex_t idc_mtx;
@@ -793,16 +793,16 @@ int main(int argc, char *argv[])
         	free(mthr_array);
             free(fileSizes_array);
 
-            pthread_exit(NULL);
+            return 0;
         }
 
         //for parent process
         close(newsock);//I dont need this, child will deal with that Initiator
-        waitpid(-1, NULL, WNOHANG);//check if any child has terminated
+        while (waitpid(-1, NULL, WNOHANG) > 0);//check if any child has terminated
     }
     while (KEEP_RUNNING == 1);
 
-    while ( waitpid(-1, NULL, WNOHANG) > 0);//when server terminates wait for all children created
+    while ( waitpid(-1, NULL, 0) > 0);//when server terminates wait for all children created
 
     free(cwd);
     free(dirFullPath);

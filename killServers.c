@@ -80,7 +80,8 @@ int main(void)
 	    if (rem == NULL) 
 	    {	
 		   herror("gethostbyname");
-		   exit(1);
+	   	   free(host_name);
+		   continue;
 	    }
 	    
 	    server.sin_family = AF_INET;
@@ -88,7 +89,11 @@ int main(void)
 	    server.sin_port = htons(port);
 	    
 	    if (connect(sock, serverptr, sizeof(server)) < 0)
-	       perror_exit("connect-Initiator");
+	    {
+	       perror("connect-Initiator");
+	       free(host_name);
+	       continue;
+	    }
 
 	   	sendMessage(sock, "KYS");
 	   	printf("Sent KillYourSelf request to server '%s' at port '%d'\n", host_name, port);
