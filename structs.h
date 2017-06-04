@@ -17,7 +17,7 @@
 //parameters passed to mirror threds
 struct mirror_thread_params
 {
-	char* dirname;
+	char* dirFullPath;
 	char* host;
 	int port;
 	char* dirorfile;

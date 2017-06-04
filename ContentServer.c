@@ -209,7 +209,8 @@ int main(int argc, char *argv[])
     int index = 1;
 
     //Read arguments
-    while (index < argc)
+    while (index + 1 
+        < argc)
     {
         if ( !strcmp(argv[index], "-p") )
         {

@@ -58,8 +58,8 @@ int matchesDirOrFile(char* requested, char* given, char* saveDir, char** localPa
 
 			requested_last_part_size = requestedSize - requested_start;//size of requested last part
 
-			*localPath = malloc( (strlen(saveDir) + requested_last_part_size + given_chars_forward + 4)*sizeof(char) );
-			sprintf(*localPath, "./%s/%s%s", saveDir, requested + requested_start, given + (i+1)*sizeof(char));
+			*localPath = malloc( (strlen(saveDir) + requested_last_part_size + given_chars_forward + 2)*sizeof(char) );
+			sprintf(*localPath, "%s/%s%s", saveDir, requested + requested_start, given + (i+1)*sizeof(char));
 			return 1;
 		}
 	}

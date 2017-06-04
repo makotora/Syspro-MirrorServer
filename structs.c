@@ -267,6 +267,7 @@ void server_list_add(server_list* sl, char* address, int port)
 
 	new_server_info->address = strdup(address);
 	new_server_info->port = port;
+	new_server_info->next = NULL;
 
 	if (sl->first == NULL)
 	{

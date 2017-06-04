@@ -26,7 +26,7 @@ int main(int argc, char* argv[])
 	int index = 1;
 
 	//Read arguments
-	while (index < argc)
+	while (index + 1 < argc)
 	{
 		if ( !strcmp(argv[index], "-n") )
 		{
@@ -66,7 +66,7 @@ int main(int argc, char* argv[])
 	}
 	else if (requests == NULL)
 	{
-		fprintf(stderr, "Error! No requests given! (-s)\n");
+		fprintf(stderr, "Error! No requests given!\n");
 		fprintf(stderr, "Usage: './MirrorInitiator -n <MirrorServerAddress> -p <MirrorServerPort> \\\\\n-s <ContentServerAddress1:ContentServerPort1:dirorfile1:delay1, \\\\\\\nContentServerAddress2:ContentServerPort2:dirorfile2:delay2, ...>'\n");
 		return -1;
 	}
@@ -139,7 +139,7 @@ int main(int argc, char* argv[])
 	}
 	else
 	{
-		fprintf(stderr, "Received unknown message '%s' from MirrorServer\n", buf);	
+		fprintf(stderr, "Received an unexpected reply:\n'%s'\n", buf);	
 	}
 
 	close(sock);
