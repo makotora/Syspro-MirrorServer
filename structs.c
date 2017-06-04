@@ -31,6 +31,7 @@ void delays_free(delays** delays_ptr_ptr)
 	{
 		target = current;
 		current = current->next;
+		free(target->id);
 		free(target);
 	}
 

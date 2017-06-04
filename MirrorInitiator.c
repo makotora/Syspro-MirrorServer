@@ -142,5 +142,7 @@ int main(int argc, char* argv[])
 		fprintf(stderr, "Received unknown message '%s' from MirrorServer\n", buf);	
 	}
 
+	close(sock);
+
 	return 0;
 }

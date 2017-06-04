@@ -20,8 +20,18 @@
 #define LISTEN_QUEUE_SIZE 10
 #define BUFSIZE 1024
 #define BUFFER_SIZE 30
+
+//prints with many details
 #define PRINTS 0
+
+//basic prints
 #define PRINTS2 1
+
+//tell content servers included in requests to terminate (after we are done with them)
+#define KILL_CONTENT_SERVERS 0
+
+//mirror server keeps_running forever (and accept many initiator requests)
+#define KEEP_RUNNING 1
 
 pthread_mutex_t buff_mtx;
 pthread_mutex_t idc_mtx;
@@ -248,6 +258,9 @@ void* mirror_thread(void* infos_par)
 
 void* worker_thread(void* null)
 {   
+    //to be detached
+    pthread_detach(pthread_self());
+
     while (1)
     {
     	Buffer_data buffer_element;
@@ -364,7 +377,6 @@ void* worker_thread(void* null)
 	 	sock = -1;
 	}
 
-	pthread_detach(pthread_self());
     pthread_exit(NULL);
 }
 
@@ -382,16 +394,13 @@ int main(int argc, char *argv[])
     struct sockaddr *clientptr=(struct sockaddr *)&client;
     struct hostent *rem;
 
-    //initialise mtxs cond_vars andm buffer
+    //initialise mtxs cond_vars and buffer
     pthread_mutex_init(&buff_mtx, 0);
     pthread_mutex_init(&idc_mtx, 0);
     pthread_mutex_init(&mtx, 0);
     pthread_cond_init(&allDone, 0);
     pthread_cond_init(&buff_not_empty, 0);
     pthread_cond_init(&buff_not_full, 0);
-    terminate = 0;
-
-    buffer = Buffer_create(BUFFER_SIZE);
    
     //read arguments
     int port = -1;
@@ -449,24 +458,7 @@ int main(int argc, char *argv[])
     //Create directory to save fetched files/dir (if it doesnt exist)
     mkdir(dirname, 0777);
 
-    //initialise array of file for fetch counters (for this session)
-    idc_list = idc_list_create();
-    numDevicesDone = 0;
-    fileSizes_index = 0;
-    fileSizes_max = 20;
-    fileSizes_array = malloc(fileSizes_max*sizeof(int));
 
-    //Create worker threads!
-    //(no need to keep their ids,they will detach)
-    for (i=0; i<threadnum; i++)
-    {
-		if ( (err = pthread_create(&thr, NULL, worker_thread, (void *) NULL)) )  
-	    {
-			perror2("pthread_create", err);
-			exit(1);
-		}
-    }
-    
     //Create socket
     sock = socket(AF_INET, SOCK_STREAM, 0);
     if ( sock < 0 )
@@ -482,179 +474,220 @@ int main(int argc, char *argv[])
     if (listen(sock, LISTEN_QUEUE_SIZE) < 0)
         perror_exit("listen");
 
-    //Accept connection (Just one, from initiator)
-    int newsock = accept(sock, clientptr, &clientlen);
-    if (newsock < 0) 
-        perror_exit("accept");
-    
-    /* Find client's address */
-    if ((rem = gethostbyaddr((char *) &client.sin_addr.s_addr, sizeof(client.sin_addr.s_addr), client.sin_family)) == NULL) 
+
+    do
     {
-        herror("gethostbyaddr");
-        exit(1);
-    }
-
-    //RECEIVE REQUESTS FROM INITIATOR
-    total_devices = 0;
-    int request_index = 0;
-    int requests_max = 5;
-    char* token;
-    char* savePtr;
-    int id = 1;//ID counter for requests
-    mirror_thread_params* infos;
-    mthr_array = malloc(requests_max*sizeof(pthread_t));
-    server_list* s_list = server_list_create();
-
-    //receive requests and create one mirror thread for each request
-    //also save distinct servers' infos in a list so we can 'kill' them after alldone
-
-    receiveMessage(newsock, buf);
-    if ( strcmp(buf, "SOR") )
-    {
-        fprintf(stderr, "Unknown message received! Expecting 'SOR'!\n");
-        return -1;
-    }
-
-    if (PRINTS2)
-        fprintf(stderr, "Receiving requests from MirrorInitiator!\n");
-
-
-    receiveMessage(newsock, buf);
-    while ( strcmp(buf, "EOR") )//until we receive EndOfRequests message
-    {
-        if (PRINTS2)
-            fprintf(stderr, "Received request: '%s' from MirrorInitiator!\n", buf);
-
-        total_devices++;
-
-        infos = malloc(sizeof(mirror_thread_params));
-        infos->dirname = strdup(dirname);
-
-        token = strtok_r(buf, ":", &savePtr);
-        infos->host = strdup(token);
-        token = strtok_r(NULL, ":", &savePtr);
-        infos->port = atoi(token);
-        token = strtok_r(NULL, ":", &savePtr);
-        infos->dirorfile = strdup(token);
-        token = strtok_r(NULL, ":", &savePtr);
-        infos->delay = atoi(token);
-
-        infos->id = malloc( (strlen(infos->host) + count_digits(id) + 2)*sizeof(char) );
-        sprintf(infos->id, "%s.%d", infos->host, id);
-        id++;
-
-        server_list_add(s_list, infos->host, infos->port);
-
-        if (request_index == requests_max)
+        //Accept connection from initiator
+        int newsock = accept(sock, clientptr, &clientlen);
+        if (newsock < 0) 
+            perror_exit("accept");
+        
+        /* Find client's address */
+        if ((rem = gethostbyaddr((char *) &client.sin_addr.s_addr, sizeof(client.sin_addr.s_addr), client.sin_family)) == NULL) 
         {
-            requests_max *= 2;
-            mthr_array = realloc(mthr_array, requests_max*sizeof(pthread_t));
-        }
-
-        if ( (err = pthread_create(&(mthr_array[request_index++]), NULL, mirror_thread, (void *) infos)) )  
-        {
-            perror2("pthread_create", err);
+            herror("gethostbyaddr");
             exit(1);
         }
 
+
         receiveMessage(newsock, buf);
-    }
-
-	for (i = 0; i < total_devices; i++)
-	{
-		if ( (err = pthread_join(mthr_array[i], (void **) &status)) ) 
-		{
-			perror2("pthread_join", err); /* termination */
-			exit(1);
-		}
-	}
-	
-	pthread_mutex_lock(&mtx);
-    	while (numDevicesDone != total_devices)
-    	{
-            if (PRINTS)
-    		  fprintf(stderr, "Waiting for allDone!\n");
-    		pthread_cond_wait(&allDone, &mtx);
-    	}
-	pthread_mutex_unlock(&mtx);
-    
-
-    if (PRINTS)
-        fprintf(stderr, "Terminating workers!\n");
-
-    pthread_mutex_lock(&buff_mtx);
-        terminate = 1;//set terminate var to 1,then broadcast for blocked workers (on pop) to wake up!
-        pthread_cond_broadcast(&buff_not_empty);
-    pthread_mutex_unlock(&buff_mtx);
-
-    if (PRINTS)
-        fprintf(stderr, "Done!\n");
-
-    if (PRINTS)
-        fprintf(stderr, "Terminating content servers!\n");
-    //Connect to each distinct Content server and send him a KillYourselfMessage
-    server_info* current = s_list->first;
-    while (current != NULL)
-    {
-        int cs_socket;
-        struct sockaddr_in server;
-        struct sockaddr *serverptr = (struct sockaddr*)&server;
-        struct hostent *rem;
-
-        //Create socket and connect to the content server
-        cs_socket = socket(AF_INET, SOCK_STREAM, 0);
-        if (cs_socket < 0)
-            perror_exit("socket");
-
-        rem = gethostbyname(current->address);
-        if (rem == NULL) 
-        {   
-           herror("mirror-gethostbyname");
-           exit(1);
+        if ( strcmp(buf, "SOR") )
+        {
+            fprintf(stderr, "Unknown message received! Expecting 'SOR'!Ignoring message.\n");
+            close(newsock);
+            continue;
         }
+
+        //INITIALISATION! (ONLY IF WE RECEIVED A VALID 'StartOfRequests' MESSAGE)
+
+        //Structs and vars initialisation
+            //for buffer and terminations
+        terminate = 0;
+        buffer = Buffer_create(BUFFER_SIZE); 
+        idc_list = idc_list_create();
+        numDevicesDone = 0;
+        total_devices = 0;
+
+            //for stats
+        filesTransferred = 0;
+        bytesTransferred = 0;
+        fileSizes_index = 0;
+        fileSizes_max = 20;
+        fileSizes_array = malloc(fileSizes_max*sizeof(int));//to keep fileSizes for spread
         
-        server.sin_family = AF_INET;
-        memcpy(&server.sin_addr, rem->h_addr, rem->h_length);
-        server.sin_port = htons(current->port);
+            //for mirror threads join and (possibly) content server 'killing'
+        int request_index = 0;
+        int requests_max = 5;
+        char* token;
+        char* savePtr;
+        int id = 1;//ID counter for requests
+        mirror_thread_params* infos;
+        mthr_array = malloc(requests_max*sizeof(pthread_t));
+        server_list* s_list = server_list_create();
+
+        //Create worker threads!
+        //(no need to keep their ids,they will detach)
+        for (i=0; i<threadnum; i++)
+        {
+            if ( (err = pthread_create(&thr, NULL, worker_thread, (void *) NULL)) )  
+            {
+                perror2("pthread_create", err);
+                exit(1);
+            }
+        }
+
+
+        //receive requests and create one mirror thread for each request
+        //also save distinct servers' infos in a list so we can 'kill' them after alldone
+
+        if (PRINTS2)
+            fprintf(stderr, "Receiving requests from MirrorInitiator!\n");
+
+        receiveMessage(newsock, buf);
+        while ( strcmp(buf, "EOR") )//until we receive EndOfRequests message
+        {
+            if (PRINTS2)
+                fprintf(stderr, "Received request: '%s' from MirrorInitiator!\n", buf);
+
+            total_devices++;
+
+            infos = malloc(sizeof(mirror_thread_params));
+            infos->dirname = strdup(dirname);
+
+            token = strtok_r(buf, ":", &savePtr);
+            infos->host = strdup(token);
+            token = strtok_r(NULL, ":", &savePtr);
+            infos->port = atoi(token);
+            token = strtok_r(NULL, ":", &savePtr);
+            infos->dirorfile = strdup(token);
+            token = strtok_r(NULL, ":", &savePtr);
+            infos->delay = atoi(token);
+
+            infos->id = malloc( (strlen(infos->host) + count_digits(id) + 2)*sizeof(char) );
+            sprintf(infos->id, "%s.%d", infos->host, id);
+            id++;
+
+            server_list_add(s_list, infos->host, infos->port);
+
+            if (request_index == requests_max)
+            {
+                requests_max *= 2;
+                mthr_array = realloc(mthr_array, requests_max*sizeof(pthread_t));
+            }
+
+            if ( (err = pthread_create(&(mthr_array[request_index++]), NULL, mirror_thread, (void *) infos)) )  
+            {
+                perror2("pthread_create", err);
+                exit(1);
+            }
+
+            receiveMessage(newsock, buf);
+        }
+
+    	for (i = 0; i < total_devices; i++)
+    	{
+    		if ( (err = pthread_join(mthr_array[i], (void **) &status)) ) 
+    		{
+    			perror2("pthread_join", err); /* termination */
+    			exit(1);
+    		}
+    	}
+    	
+    	pthread_mutex_lock(&mtx);
+        	while (numDevicesDone != total_devices)
+        	{
+                if (PRINTS)
+        		  fprintf(stderr, "Waiting for allDone!\n");
+        		pthread_cond_wait(&allDone, &mtx);
+        	}
+    	pthread_mutex_unlock(&mtx);
         
-        if (connect(cs_socket, serverptr, sizeof(server)) < 0)
-           perror_exit("connect");
 
-        //send KillYourSelf message
-        sendMessage(cs_socket, "KYS");
-        close(cs_socket);
+        if (PRINTS)
+            fprintf(stderr, "Terminating workers!\n");
 
-        current = current->next;
+        pthread_mutex_lock(&buff_mtx);
+            terminate = 1;//set terminate var to 1,then broadcast for blocked workers (on pop) to wake up!
+            pthread_cond_broadcast(&buff_not_empty);
+        pthread_mutex_unlock(&buff_mtx);
+
+        if (PRINTS)
+            fprintf(stderr, "Done!\n");
+
+        //calculate stats and send them to Initiator
+        float mean = (float) bytesTransferred / (float) filesTransferred;
+        float spr = 0;
+        for (i=0; i<filesTransferred; i++)
+        {
+            spr += ((float)fileSizes_array[i] - mean)*((float)fileSizes_array[i] - mean);
+        }
+        if (filesTransferred > 1)
+            spr = spr / (filesTransferred - 1);
+
+        if (PRINTS)
+        {
+            printf("Files Transferred: %d\nBytes Transferred: %d\nMean: %.2f\nSpread: %.2f\n", filesTransferred, bytesTransferred, mean, spr);
+            fprintf(stderr, "Sending stats to mirror initiator!\n");
+        }
+
+        sendMessage(newsock, "STATS");//message so he knows he will receive stats
+        sprintf(buf, "Files Transferred: %d\nBytes Transferred: %d\nMean: %.2f\nSpread: %.2f\n", filesTransferred, bytesTransferred, mean, spr);
+        sendMessage(newsock, buf);
+
+        close(newsock);
+
+        //Connect to each distinct Content server and send him a KillYourselfMessage
+        if (KILL_CONTENT_SERVERS == 1)
+        {
+
+            if (PRINTS)
+                fprintf(stderr, "Terminating content servers!\n");
+
+            server_info* current = s_list->first;
+            while (current != NULL)
+            {
+                int cs_socket;
+                struct sockaddr_in server;
+                struct sockaddr *serverptr = (struct sockaddr*)&server;
+                struct hostent *rem;
+
+                //Create socket and connect to the content server
+                cs_socket = socket(AF_INET, SOCK_STREAM, 0);
+                if (cs_socket < 0)
+                    perror_exit("socket");
+
+                rem = gethostbyname(current->address);
+                if (rem == NULL) 
+                {   
+                   herror("mirror-gethostbyname");
+                   exit(1);
+                }
+                
+                server.sin_family = AF_INET;
+                memcpy(&server.sin_addr, rem->h_addr, rem->h_length);
+                server.sin_port = htons(current->port);
+                
+                if (connect(cs_socket, serverptr, sizeof(server)) < 0)
+                   perror_exit("connect");
+
+                //send KillYourSelf message
+                sendMessage(cs_socket, "KYS");
+                close(cs_socket);
+
+                current = current->next;
+            }
+        }
+
+        idc_list_free(&idc_list);
+        server_list_free(&s_list);
+    	Buffer_free(&buffer);
+
+    	free(mthr_array);
+        free(fileSizes_array);
     }
+    while (KEEP_RUNNING == 1);
 
-    //calculate stats and send them to Initiator
-    float mean = (float) bytesTransferred / (float) filesTransferred;
-    float spr = 0;
-    for (i=0; i<filesTransferred; i++)
-    {
-        spr += ((float)fileSizes_array[i] - mean)*((float)fileSizes_array[i] - mean);
-    }
-    if (filesTransferred > 1)
-        spr = spr / (filesTransferred - 1);
-
-    if (PRINTS)
-    {
-        printf("Files Transferred: %d\nBytes Transferred: %d\nMean: %.2f\nSpread: %.2f\n", filesTransferred, bytesTransferred, mean, spr);
-        fprintf(stderr, "Sending stats to mirror initiator!\n");
-    }
-
-    sendMessage(newsock, "STATS");//message so he knows he will receive stats
-    sprintf(buf, "Files Transferred: %d\nBytes Transferred: %d\nMean: %.2f\nSpread: %.2f\n", filesTransferred, bytesTransferred, mean, spr);
-    sendMessage(newsock, buf);
-
-    close(newsock);
     close(sock);
 
-    idc_list_free(&idc_list);
-    server_list_free(&s_list);
-	Buffer_free(&buffer);
-
-	free(mthr_array);
-    free(fileSizes_array);
     pthread_exit(NULL);
 }		
